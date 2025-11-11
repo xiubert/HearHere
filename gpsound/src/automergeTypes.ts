@@ -11,6 +11,7 @@ export interface User {
   name?: string; // user's display name (optional)
   connectedAt: number; // timestamp
   lastSeen: number; // timestamp for heartbeat
+  hiddenSince?: number; // timestamp when tab became hidden (undefined if visible)
 }
 
 // The root structure of our shared Automerge document

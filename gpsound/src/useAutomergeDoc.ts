@@ -64,7 +64,7 @@ export const useAutomergeDoc = () => {
 
   // Manage user presence: add this user and send heartbeats
   useEffect(() => {
-    if (!doc || !changeDoc) return;
+    if (!changeDoc) return;
 
     // Add or update this user in the document
     const updatePresence = () => {
@@ -74,18 +74,37 @@ export const useAutomergeDoc = () => {
         }
         
         const now = Date.now();
+        const isVisible = !document.hidden;
         
         if (!d.users[userId]) {
           // New user joining
-          d.users[userId] = {
+          const newUser: any = {
             id: userId,
             connectedAt: now,
             lastSeen: now,
           };
-          console.log("User joined:", userId);
+          
+          // Only set hiddenSince if tab is hidden
+          if (!isVisible) {
+            newUser.hiddenSince = now;
+          }
+          
+          d.users[userId] = newUser;
         } else {
-          // Update existing user's heartbeat
+          // Update existing user's heartbeat and update hiddenSince based on visibility
           d.users[userId].lastSeen = now;
+          
+          // If visible now, delete hiddenSince (Automerge doesn't allow undefined)
+          // If hidden now and wasn't tracking it yet, set hiddenSince
+          if (isVisible) {
+            if (d.users[userId].hiddenSince !== undefined) {
+              delete d.users[userId].hiddenSince;
+            }
+          } else if (d.users[userId].hiddenSince === undefined) {
+            // Only set hiddenSince if it's not already set (tab just became hidden)
+            d.users[userId].hiddenSince = now;
+          }
+          // If already hidden, keep the original hiddenSince timestamp
         }
       });
     };
@@ -93,28 +112,52 @@ export const useAutomergeDoc = () => {
     // Initial presence update
     updatePresence();
 
-    // Send heartbeat every 5 seconds to show we're still connected
+    // Send heartbeat every 5 seconds
+    // Note: Browsers will throttle this when tab is hidden (may run ~1x/minute)
+    // That's okay - we account for this with a longer timeout
     const heartbeatInterval = setInterval(updatePresence, 5000);
+
+    // Also update presence when visibility changes
+    // This gives immediate feedback when users switch tabs
+    const handleVisibilityChange = () => {
+      updatePresence();
+    };
+    
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     // Cleanup: remove user when component unmounts
     return () => {
       clearInterval(heartbeatInterval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       // Note: We're not removing the user from the document on unmount
       // In a production app, you'd want a cleanup strategy for stale users
     };
-  }, [doc, changeDoc, userId]);
+  }, [changeDoc, userId]);
 
-  // Get list of connected users
-  // Consider a user connected if their last heartbeat was within 10 seconds
+  // Get list of connected users with computed isActive status
+  // Use a longer timeout to account for browser throttling of background tabs
+  // Browsers may throttle setInterval to ~1x per minute when tab is hidden
+  // So we need to be generous with the timeout
   const connectedUsers = (() => {
     if (!doc?.users) return [];
     
     const now = Date.now();
-    const TIMEOUT = 10000; // 10 seconds
+    const DISCONNECT_TIMEOUT = 90000; // 90 seconds (1.5 minutes) - marks as disconnected
+    const AWAY_DELAY = 30000; // 30 seconds - delay before marking as "away"
     
-    return Object.values(doc.users).filter(
-      (user) => now - user.lastSeen < TIMEOUT
-    );
+    return Object.values(doc.users)
+      .filter((user) => now - user.lastSeen < DISCONNECT_TIMEOUT)
+      .map((user) => {
+        // Calculate if user is "active" based on hiddenSince timestamp
+        // Active if: hiddenSince is undefined OR hidden for less than 30 seconds
+        const isActive = user.hiddenSince === undefined || 
+                        (now - user.hiddenSince < AWAY_DELAY);
+        
+        return {
+          ...user,
+          isActive, // Computed property - not stored in document
+        };
+      });
   })();
 
   // Function to update the current user's name

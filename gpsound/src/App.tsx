@@ -11,6 +11,16 @@ function App() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [nameInput, setNameInput] = useState('');
 
+  // Debug: When expanded, log what we're seeing
+  if (isExpanded && connectedUsers.length > 0) {
+    const now = Date.now();
+    console.log("User list expanded - current state:");
+    connectedUsers.forEach(u => {
+      const hiddenFor = u.hiddenSince ? `${Math.round((now - u.hiddenSince) / 1000)}s` : 'visible';
+      console.log(`  ${u.id.substring(0, 8)}: isActive=${u.isActive}, hiddenFor=${hiddenFor}, name=${u.name || 'Anonymous'} ${u.id === userId ? '(YOU)' : ''}`);
+    });
+  }
+
   // Get current user's name from the document
   const currentUser = connectedUsers.find(u => u.id === userId);
   const currentUserName = currentUser?.name || '';
@@ -125,6 +135,9 @@ function App() {
             {connectedUsers.map((user, index) => {
               const isCurrentUser = user.id === userId;
               const isLastUser = index === connectedUsers.length - 1;
+              // Default to true if isActive is undefined (for backwards compatibility)
+              const isActive = user.isActive !== false;
+
               return (
                 <div
                   key={user.id}
@@ -133,28 +146,56 @@ function App() {
                     backgroundColor: isCurrentUser ? '#eff6ff' : 'transparent',
                     borderLeft: isCurrentUser ? '3px solid #3b82f6' : '3px solid transparent',
                     borderRadius: isLastUser ? '0 0 12px 12px' : '0',
+                    opacity: isActive ? 1 : 0.7,
                   }}
                 >
                   <div style={{
-                    fontWeight: isCurrentUser ? 600 : 400,
-                    color: '#1f2937',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
                   }}>
-                    {user.name || 'Anonymous'}
-                    {isCurrentUser && (
-                      <span style={{
-                        marginLeft: '6px',
-                        fontSize: '11px',
-                        color: '#6b7280',
-                        fontWeight: 400,
-                      }}>
-                        (you)
-                      </span>
-                    )}
+                    {/* Active/Away status dot */}
+                    <div style={{
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      backgroundColor: isActive ? '#22c55e' : '#94a3b8',
+                      flexShrink: 0,
+                    }} />
+                    <div style={{
+                      fontWeight: isCurrentUser ? 600 : 400,
+                      color: '#1f2937',
+                      flex: 1,
+                    }}>
+                      {user.name || 'Anonymous'}
+                      {isCurrentUser && (
+                        <span style={{
+                          marginLeft: '6px',
+                          fontSize: '11px',
+                          color: '#6b7280',
+                          fontWeight: 400,
+                        }}>
+                          (you)
+                        </span>
+                      )}
+                      {!isActive && (
+                        <span style={{
+                          marginLeft: '6px',
+                          fontSize: '11px',
+                          color: '#9ca3af',
+                          fontWeight: 400,
+                          fontStyle: 'italic',
+                        }}>
+                          away
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div style={{
                     fontSize: '11px',
                     color: '#9ca3af',
                     marginTop: '2px',
+                    marginLeft: '12px',
                   }}>
                     {user.id.substring(0, 12)}...
                   </div>
@@ -164,7 +205,7 @@ function App() {
           </div>
         )}
       </div>
-      
+
       {/* Add pulse animation for the online indicator */}
       <style>{`
         @keyframes pulse {
@@ -172,7 +213,7 @@ function App() {
           50% { opacity: 0.5; }
         }
       `}</style>
-      
+
       <DrawMapZones />
     </>
   );
