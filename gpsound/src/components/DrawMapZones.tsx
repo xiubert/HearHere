@@ -5,6 +5,7 @@ import Flatten from 'flatten-js';
 import SoundKit from './SoundKit';
 import SoundPlayer from './SoundPlayer';
 import MarkerSelectDialog from './UserSelection';
+import { INSTRUMENT_DEFINITIONS } from './instrumentConfig';
 import type { DrawnLayer, DrawnShape, SoundConfig } from '../sharedTypes';
 
 // Fix for default markers
@@ -47,6 +48,9 @@ const DrawMapZones = () => {
         soundType: null
     });
     const [isMarkerDlgOpen, setIsMarkerDlgOpen] = useState(false);
+    const [showDebugInstruments, setShowDebugInstruments] = useState(false);
+    const [debugMode, setDebugMode] = useState(false);
+    const [playingInstruments, setPlayingInstruments] = useState<Set<string>>(new Set());
     let {point} = Flatten;
     const chosenMarkerRef = useRef<Flatten.Point>(point(0,0));
     
@@ -637,9 +641,32 @@ const DrawMapZones = () => {
     }
 
     const handleSoundboxing = () => {
+        // Toggle the debug instrument selector
+        setShowDebugInstruments(!showDebugInstruments);
+    }
+
+    const handleToggleDebugInstrument = async (instrumentId: string) => {
         const soundPlayer = SoundPlayer.getInstance();
-        console.log("playing test sound")
-        soundPlayer.playSingle("test", "C4")
+
+        if (playingInstruments.has(instrumentId)) {
+            // Stop the instrument
+            console.log(`Stopping debug instrument: ${instrumentId}`);
+            soundPlayer.stopInstrument(instrumentId);
+            setPlayingInstruments(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(instrumentId);
+                return newSet;
+            });
+        } else {
+            // Start the instrument
+            console.log(`Starting debug instrument: ${instrumentId}`);
+            await soundPlayer.startInstrument(instrumentId, "C4");
+            setPlayingInstruments(prev => new Set(prev).add(instrumentId));
+        }
+    }
+
+    const handleCloseDebugSelector = () => {
+        setShowDebugInstruments(false);
     }
 
 
@@ -714,12 +741,12 @@ const DrawMapZones = () => {
             </label>
 
             <button
-                onClick={() => nearestShapes({chosenMarker: chosenMarkerRef.current, threshold: 30})}
+                onClick={() => setDebugMode(!debugMode)}
                 style={{
                     position: 'absolute',
-                    top: '625px',
-                    left: '10px',
-                    backgroundColor: '#3b82f6',
+                    bottom: '10px',
+                    right: '10px',
+                    backgroundColor: debugMode ? '#ef4444' : '#8b5cf6',
                     color: 'white',
                     padding: '8px 12px',
                     border: 'none',
@@ -730,27 +757,135 @@ const DrawMapZones = () => {
                     boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
                 }}
             >
-                Get nearest (debug)
+                {debugMode ? 'Hide Debug Mode' : 'Debug Mode'}
             </button>
-            <button
-                onClick={handleSoundboxing}
-                style={{
-                    position: 'absolute',
-                    top: '670px',
-                    left: '10px',
-                    backgroundColor: '#3b82f6',
-                    color: 'white',
-                    padding: '8px 12px',
-                    border: 'none',
-                    borderRadius: '4px',
-                    fontSize: '14px',
-                    cursor: 'pointer',
-                    zIndex: 1000,
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                }}
-            >
-                Sound test (debug)
-            </button>
+
+            {debugMode && (
+                <>
+                    <button
+                        onClick={handleSoundboxing}
+                        style={{
+                            position: 'absolute',
+                            bottom: '100px',
+                            right: '10px',
+                            backgroundColor: '#3b82f6',
+                            color: 'white',
+                            padding: '8px 12px',
+                            border: 'none',
+                            borderRadius: '4px',
+                            fontSize: '14px',
+                            cursor: 'pointer',
+                            zIndex: 1000,
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                        }}
+                    >
+                        Sound test (debug)
+                    </button>
+                    <button
+                        onClick={() => nearestShapes({chosenMarker: chosenMarkerRef.current, threshold: 30})}
+                        style={{
+                            position: 'absolute',
+                            bottom: '55px',
+                            right: '10px',
+                            backgroundColor: '#3b82f6',
+                            color: 'white',
+                            padding: '8px 12px',
+                            border: 'none',
+                            borderRadius: '4px',
+                            fontSize: '14px',
+                            cursor: 'pointer',
+                            zIndex: 1000,
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                        }}
+                    >
+                        Get nearest (debug)
+                    </button>
+                </>
+            )}
+
+            {/* Debug Instrument Selector */}
+            {showDebugInstruments && (
+                <>
+                    {/* Overlay to close on click outside */}
+                    <div
+                        onClick={handleCloseDebugSelector}
+                        style={{
+                            position: 'fixed',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            zIndex: 1000,
+                            backgroundColor: 'transparent'
+                        }}
+                    />
+                    {/* Instrument list */}
+                    <div
+                        style={{
+                            position: 'absolute',
+                            bottom: '145px',
+                            right: '10px',
+                            backgroundColor: 'white',
+                            border: '1px solid #ccc',
+                            borderRadius: '4px',
+                            boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+                            zIndex: 1001,
+                            maxHeight: '300px',
+                            overflowY: 'auto',
+                            minWidth: '200px'
+                        }}
+                    >
+                        <div style={{ padding: '8px', borderBottom: '1px solid #e5e5e5', fontWeight: 'bold', color: '#111' }}>
+                            Select instruments
+                        </div>
+                        {INSTRUMENT_DEFINITIONS.map((instrument) => {
+                            const isPlaying = playingInstruments.has(instrument.id);
+                            return (
+                                <div
+                                    key={instrument.id}
+                                    style={{
+                                        padding: '8px 12px',
+                                        borderBottom: '1px solid #f0f0f0',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        gap: '12px'
+                                    }}
+                                >
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontWeight: '500', color: '#111' }}>{instrument.name}</div>
+                                        <div style={{ fontSize: '12px', color: '#1f34b8ff' }}>ID: {instrument.id}</div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleToggleDebugInstrument(instrument.id)}
+                                        style={{
+                                            padding: '6px 12px',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            fontSize: '12px',
+                                            fontWeight: '600',
+                                            backgroundColor: isPlaying ? '#ef4444' : '#10b981',
+                                            color: 'white',
+                                            transition: 'all 0.2s',
+                                            minWidth: '60px'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.currentTarget.style.backgroundColor = isPlaying ? '#dc2626' : '#059669';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.currentTarget.style.backgroundColor = isPlaying ? '#ef4444' : '#10b981';
+                                        }}
+                                    >
+                                        {isPlaying ? '⏹ Stop' : '▶ Play'}
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </>
+            )}
+
             <div>
                 <button 
                     onClick={handleOpenMarkerDlg}
