@@ -141,7 +141,7 @@ export const INSTRUMENT_DEFINITIONS: InstrumentDefinition[] = [
         const synthL = new Tone.Synth({
           oscillator: {
             type: "custom",
-            partials: [2, 1, 2, 2],
+            partials: [1, 0.5, 0.3, 0.25, 0.2, 0.15, 0.1],
           },
           envelope: {
             attack: 0.005,
@@ -156,7 +156,8 @@ export const INSTRUMENT_DEFINITIONS: InstrumentDefinition[] = [
         const synthR = new Tone.Synth({
           oscillator: {
             type: "custom",
-            partials: [2, 1, 2, 2],
+            // partials: [2, 1, 2, 2],
+            partials: [1, 0.5, 0.3, 0.25, 0.2, 0.15, 0.1]
           },
           envelope: {
             attack: 0.005,
@@ -174,15 +175,17 @@ export const INSTRUMENT_DEFINITIONS: InstrumentDefinition[] = [
           // - duration: how long the note rings ("8n" = eighth note)
           // - time: WHEN to play it (scheduled time from pattern)
           synthL.triggerAttackRelease(note, "8n", time);
-        }, ["C1", "D3", "E2", "A3"], "upDown");
+        }, ["G2", "D3", "E2", "A3"], "upDown");
 
         const arp_pattern_R = new Tone.Pattern((time, note) => {
           synthR.triggerAttackRelease(note, "8n", time);
-        }, ["C1", "D3", "E2", "A3"], "upDown");
+        }, ["G2", "D3", "E2", "A3"], "upDown");
 
         // Set interval and playback rate
-        arp_pattern_L.interval = "8n";
-        arp_pattern_R.interval = "8n";
+        // arp_pattern_L.interval = "8n";
+        // arp_pattern_R.interval = "8n";
+        arp_pattern_L.interval = "4n";
+        arp_pattern_R.interval = "4n";
         // set the playback rate of the right part to be slightly slower
         arp_pattern_R.playbackRate = 0.985;
 
@@ -383,6 +386,292 @@ export const INSTRUMENT_DEFINITIONS: InstrumentDefinition[] = [
       // accentSynth.triggerAttackRelease(accentNotes[0], "16n");
 
       return [pattern, accentSynth];
+    }
+  },
+  {
+    id: "tintinnabular",
+    name: "Tintinnabular (Pärt Style)",
+    defaultNote: "C4",
+    create: () => {
+      // Reverb for the whole instrument - cathedral-like
+      const reverb = new Tone.Reverb({
+        wet: 0.6,
+        decay: 4
+      });
+
+      // Chorus for warmth and vocal quality
+      const chorus = new Tone.Chorus({
+        frequency: 1.5,
+        delayTime: 3.5,
+        depth: 0.7,
+        wet: 0.3
+      }).start();
+
+      // TINTINNABULAR VOICE - arpeggiated tonic triad (C major: C-E-G)
+      // Using DuoSynth for richer, more choral harmonics
+      const tintinnabularSynth = new Tone.DuoSynth({
+        vibratoAmount: 0.2,
+        vibratoRate: 3,
+        harmonicity: 1.5,
+        voice0: {
+          oscillator: { type: "sine" },
+          envelope: {
+            attack: 0.2,
+            decay: 0.3,
+            sustain: 0.8,
+            release: 2,
+          }
+        },
+        voice1: {
+          oscillator: { type: "sine" },
+          envelope: {
+            attack: 0.2,
+            decay: 0.3,
+            sustain: 0.8,
+            release: 2,
+          }
+        },
+        volume: -18
+      }).chain(chorus, reverb, Tone.Destination);
+
+      // MELODIC VOICE - diatonic stepwise motion (C major scale)
+      // Using AMSynth for warm, vocal-like quality
+      const melodicSynth = new Tone.AMSynth({
+        harmonicity: 2,
+        oscillator: {
+          type: "sine"
+        },
+        envelope: {
+          attack: 0.3,
+          decay: 0.2,
+          sustain: 0.8,
+          release: 2.5
+        },
+        modulation: {
+          type: "sine"
+        },
+        modulationEnvelope: {
+          attack: 0.5,
+          decay: 0.3,
+          sustain: 0.7,
+          release: 2
+        },
+        volume: -16
+      }).chain(chorus, reverb, Tone.Destination);
+
+      // Tintinnabular voice: arpeggiate C major triad (C-E-G)
+      const triadPattern = new Tone.Pattern((time, note) => {
+        tintinnabularSynth.triggerAttackRelease(note, "4n", time);
+      }, ["C3", "E3", "G3"], "up");
+
+      triadPattern.interval = "2n"; // Half note intervals - slow and bell-like
+
+      // Melodic voice: stepwise diatonic motion in C major
+      const melodicPattern = new Tone.Pattern((time, note) => {
+        melodicSynth.triggerAttackRelease(note, "2n", time);
+      }, ["C4", "D4", "E4", "F4", "E4", "D4"], "upDown");
+
+      melodicPattern.interval = "1n"; // Whole note intervals - very slow
+
+      // Start both patterns
+      triadPattern.start(0);
+      melodicPattern.start(0);
+
+      return [triadPattern, melodicPattern];
+    }
+  },
+  {
+    id: "tintinnabular_harmony",
+    name: "Tintinnabular Harmony (Thirds & Sixths)",
+    defaultNote: "C4",
+    create: () => {
+      // Reverb for the whole instrument - cathedral-like
+      const reverb = new Tone.Reverb({
+        wet: 0.6,
+        decay: 4
+      });
+
+      // Chorus for warmth and vocal quality
+      const chorus = new Tone.Chorus({
+        frequency: 1.5,
+        delayTime: 3.5,
+        depth: 0.7,
+        wet: 0.3
+      }).start();
+
+      // TINTINNABULAR VOICE - thirds above the original triad
+      // Original: C4-E4-G4, Harmony: E4-G4-B4 (thirds above)
+      const tintinnabularSynth = new Tone.DuoSynth({
+        vibratoAmount: 0.2,
+        vibratoRate: 3,
+        harmonicity: 1.5,
+        voice0: {
+          oscillator: { type: "sine" },
+          envelope: {
+            attack: 0.2,
+            decay: 0.3,
+            sustain: 0.8,
+            release: 2,
+          }
+        },
+        voice1: {
+          oscillator: { type: "sine" },
+          envelope: {
+            attack: 0.2,
+            decay: 0.3,
+            sustain: 0.8,
+            release: 2,
+          }
+        },
+        volume: -20
+      }).chain(chorus, reverb, Tone.Destination);
+
+      // MELODIC VOICE - sixths above the original melody
+      // Original: C5-D5-E5-F5-E5-D5, Harmony: A5-B5-C6-D6-C6-B5 (sixths above)
+      const melodicSynth = new Tone.AMSynth({
+        harmonicity: 2,
+        oscillator: {
+          type: "sine"
+        },
+        envelope: {
+          attack: 0.3,
+          decay: 0.2,
+          sustain: 0.8,
+          release: 2.5
+        },
+        modulation: {
+          type: "sine"
+        },
+        modulationEnvelope: {
+          attack: 0.5,
+          decay: 0.3,
+          sustain: 0.7,
+          release: 2
+        },
+        volume: -18
+      }).chain(chorus, reverb, Tone.Destination);
+
+      // Tintinnabular voice: thirds above original (C4-E4-G4 becomes E4-G4-B4)
+      const triadPattern = new Tone.Pattern((time, note) => {
+        tintinnabularSynth.triggerAttackRelease(note, "4n", time);
+      }, ["E4", "G4", "B4"], "up");
+
+      triadPattern.interval = "2n"; // Half note intervals - same as original
+
+      // Melodic voice: sixths above original (C5-D5-E5-F5-E5-D5 becomes A5-B5-C6-D6-C6-B5)
+      const melodicPattern = new Tone.Pattern((time, note) => {
+        melodicSynth.triggerAttackRelease(note, "2n", time);
+      }, ["A5", "B5", "C6", "D6", "C6", "B5"], "upDown");
+
+      melodicPattern.interval = "1n"; // Whole note intervals - same as original
+
+      // Start both patterns with slight time offsets for character
+      // Offset creates a gentle "cascading" effect when played with the original
+      triadPattern.start("8n");    // Start an eighth note later
+      melodicPattern.start("4n");  // Start a quarter note later
+
+      return [triadPattern, melodicPattern];
+    }
+  },
+  {
+    id: "tintinnabular_dissonance",
+    name: "Tintinnabular Dissonance (Tension)",
+    defaultNote: "C4",
+    create: () => {
+      // Less reverb to make the dissonance more stark and present
+      const reverb = new Tone.Reverb({
+        wet: 0.3,
+        decay: 2
+      });
+
+      // Slight detuning to add to the uncomfortable feeling
+      const chorus = new Tone.Chorus({
+        frequency: 0.5,
+        delayTime: 2,
+        depth: 0.4,
+        wet: 0.2
+      }).start();
+
+      // TINTINNABULAR VOICE - dissonant intervals from original triad
+      // Original: C4-E4-G4
+      // Dissonant: Db4-F4-Ab4 (minor seconds & tritones away)
+      const tintinnabularSynth = new Tone.DuoSynth({
+        vibratoAmount: 0.3,  // More vibrato adds to unease
+        vibratoRate: 4.5,     // Faster vibrato feels more anxious
+        harmonicity: 1.2,     // Slightly detuned harmonicity
+        voice0: {
+          oscillator: { type: "sine" },
+          envelope: {
+            attack: 0.15,
+            decay: 0.4,
+            sustain: 0.7,
+            release: 1.8,
+          }
+        },
+        voice1: {
+          oscillator: { type: "sine" },
+          envelope: {
+            attack: 0.15,
+            decay: 0.4,
+            sustain: 0.7,
+            release: 1.8,
+          }
+        },
+        volume: -19
+      }).chain(chorus, reverb, Tone.Destination);
+
+      // MELODIC VOICE - major sevenths and tritones from original
+      // Original: C5-D5-E5-F5-E5-D5
+      // Dissonant: B5-C#6-F5-B5-F5-C#6 (major 7ths, tritones, minor 2nds)
+      const melodicSynth = new Tone.AMSynth({
+        harmonicity: 1.8,  // Unusual harmonicity for tension
+        oscillator: {
+          type: "sine"
+        },
+        envelope: {
+          attack: 0.25,
+          decay: 0.3,
+          sustain: 0.7,
+          release: 2
+        },
+        modulation: {
+          type: "sine"
+        },
+        modulationEnvelope: {
+          attack: 0.4,
+          decay: 0.4,
+          sustain: 0.6,
+          release: 1.8
+        },
+        volume: -17
+      }).chain(chorus, reverb, Tone.Destination);
+
+      // Tintinnabular voice: Creates minor 2nds and tritones against C4-E4-G4
+      // Db4 is a minor 2nd above C4
+      // F4 is a tritone from B (in the harmony voice)
+      // Ab4 is a minor 2nd above G4
+      const triadPattern = new Tone.Pattern((time, note) => {
+        tintinnabularSynth.triggerAttackRelease(note, "4n", time);
+      }, ["Db4", "F4", "Ab4"], "up");
+
+      triadPattern.interval = "2n";
+
+      // Melodic voice: Major 7ths and tritones
+      // B5 is a major 7th from C5
+      // C#6 is a minor 2nd from D5
+      // F5 is a tritone from B and minor 2nd from E5
+      const melodicPattern = new Tone.Pattern((time, note) => {
+        melodicSynth.triggerAttackRelease(note, "2n", time);
+      }, ["B5", "C#6", "F5", "B5", "F5", "C#6"], "upDown");
+
+      melodicPattern.interval = "1n";
+
+      // Offset timing to create maximum clash when played with original
+      // Start slightly before the beat to create anticipatory tension
+      triadPattern.start("16n");    // Start a sixteenth note later (creates close clash)
+      melodicPattern.start("8n.");  // Dotted eighth for off-kilter feeling
+
+      return [triadPattern, melodicPattern];
     }
   }
 ];

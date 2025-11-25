@@ -730,8 +730,8 @@ const DrawMapZones = () => {
                 onClick={() => setDebugMode(!debugMode)}
                 style={{
                     position: 'absolute',
-                    top: '625px',
-                    left: '10px',
+                    bottom: '10px',
+                    right: '10px',
                     backgroundColor: debugMode ? '#ef4444' : '#8b5cf6',
                     color: 'white',
                     padding: '8px 12px',
@@ -749,30 +749,11 @@ const DrawMapZones = () => {
             {debugMode && (
                 <>
                     <button
-                        onClick={() => nearestShapes({chosenMarker: chosenMarkerRef.current, threshold: 30})}
-                        style={{
-                            position: 'absolute',
-                            top: '670px',
-                            left: '10px',
-                            backgroundColor: '#3b82f6',
-                            color: 'white',
-                            padding: '8px 12px',
-                            border: 'none',
-                            borderRadius: '4px',
-                            fontSize: '14px',
-                            cursor: 'pointer',
-                            zIndex: 1000,
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                        }}
-                    >
-                        Get nearest (debug)
-                    </button>
-                    <button
                         onClick={handleSoundboxing}
                         style={{
                             position: 'absolute',
-                            top: '715px',
-                            left: '10px',
+                            bottom: '100px',
+                            right: '10px',
                             backgroundColor: '#3b82f6',
                             color: 'white',
                             padding: '8px 12px',
@@ -785,6 +766,25 @@ const DrawMapZones = () => {
                         }}
                     >
                         Sound test (debug)
+                    </button>
+                    <button
+                        onClick={() => nearestShapes({chosenMarker: chosenMarkerRef.current, threshold: 30})}
+                        style={{
+                            position: 'absolute',
+                            bottom: '55px',
+                            right: '10px',
+                            backgroundColor: '#3b82f6',
+                            color: 'white',
+                            padding: '8px 12px',
+                            border: 'none',
+                            borderRadius: '4px',
+                            fontSize: '14px',
+                            cursor: 'pointer',
+                            zIndex: 1000,
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                        }}
+                    >
+                        Get nearest (debug)
                     </button>
                 </>
             )}
@@ -809,8 +809,8 @@ const DrawMapZones = () => {
                     <div
                         style={{
                             position: 'absolute',
-                            top: '755px',
-                            left: '10px',
+                            bottom: '145px',
+                            right: '10px',
                             backgroundColor: 'white',
                             border: '1px solid #ccc',
                             borderRadius: '4px',
