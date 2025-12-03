@@ -20,8 +20,8 @@ export class SoundPlayer {
 
   async playSingle(soundType: string, note: string): Promise<void> {
     await Tone.start();
-    // const timeLimit = 8000;
-    const timeLimit = 1e+20;
+    const timeLimit = 8000;
+    // const timeLimit = 1e+20;
 
     const instrument = this.createInstrument(soundType);
     this.activeInstruments.push(instrument);  // Track it so stopAll() can kill it
