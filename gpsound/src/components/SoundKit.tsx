@@ -46,44 +46,50 @@ const SoundKit = ({ show, shapeId, position, onSoundSelect, onClose, selectedSou
       }}>
         Select Sound for {shapeId}
       </div>
-      {INSTRUMENT_DEFINITIONS.map((sound) => (
-        <button
-          key={sound.id}
-          onClick={() => handleSoundSelect(sound.id, sound.defaultNote)}
-          style={{
-            width: '100%',
-            padding: '10px 12px',
-            border: 'none',
-            backgroundColor: 'white',
-            textAlign: 'left',
-            cursor: 'pointer',
-            fontSize: '14px',
-            color: '#333',
-            transition: 'background-color 0.2s',
-            display: 'block',
-            position: 'relative'
-          }}
-          onMouseOver={(e) => {
-            (e.target as HTMLElement).style.backgroundColor = '#e3f2fd';
-            (e.target as HTMLElement).style.color = '#1976d2';
-          }}
-          onMouseOut={(e) => {
-            (e.target as HTMLElement).style.backgroundColor = 'white';
-            (e.target as HTMLElement).style.color = '#333';
-          }}
-        >
-          {sound.name} 
-          {selectedSoundType === sound.id && (
-            <span style={{
-              position: 'absolute',
-              right: '12px',
-              color: '#10b981',
-              fontWeight: 'bold',
-              fontSize: '16px'
-            }}>✔</span>
-          )}
-        </button>
-      ))}
+      <div style={{
+        maxHeight: '300px',
+        overflowY: 'auto',
+        overflowX: 'hidden'
+      }}>
+        {INSTRUMENT_DEFINITIONS.map((sound) => (
+          <button
+            key={sound.id}
+            onClick={() => handleSoundSelect(sound.id, sound.defaultNote)}
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              border: 'none',
+              backgroundColor: 'white',
+              textAlign: 'left',
+              cursor: 'pointer',
+              fontSize: '14px',
+              color: '#333',
+              transition: 'background-color 0.2s',
+              display: 'block',
+              position: 'relative'
+            }}
+            onMouseOver={(e) => {
+              (e.target as HTMLElement).style.backgroundColor = '#e3f2fd';
+              (e.target as HTMLElement).style.color = '#1976d2';
+            }}
+            onMouseOut={(e) => {
+              (e.target as HTMLElement).style.backgroundColor = 'white';
+              (e.target as HTMLElement).style.color = '#333';
+            }}
+          >
+            {sound.name}
+            {selectedSoundType === sound.id && (
+              <span style={{
+                position: 'absolute',
+                right: '12px',
+                color: '#10b981',
+                fontWeight: 'bold',
+                fontSize: '16px'
+              }}>✔</span>
+            )}
+          </button>
+        ))}
+      </div>
       <div style={{ borderTop: '1px solid #ddd', padding: '8px' }}>
         <button
           onClick={onClose}

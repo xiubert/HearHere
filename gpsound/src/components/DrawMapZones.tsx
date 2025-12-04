@@ -4,12 +4,15 @@ import 'leaflet-draw';
 import Flatten from 'flatten-js';
 import SoundKit from './SoundKit';
 import SoundPlayer from './SoundPlayer';
+import { INSTRUMENT_DEFINITIONS } from './instrumentConfig';
 import type { DrawnLayer, DrawnShape, SoundConfig } from '../sharedTypes';
 import type { User } from '../automergeTypes';
 
 // Fix for default markers
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+
+// TODO: remove vestigial marker logic
 
 let DefaultIcon = L.icon({
     iconUrl: icon,
@@ -52,6 +55,9 @@ const DrawMapZones = ({ connectedUsers, currentUserId, updateUserPosition }: Dra
         shapeId: null,
         soundType: null
     });
+    const [showDebugInstruments, setShowDebugInstruments] = useState(false);
+    const [debugMode, setDebugMode] = useState(false);
+    const [playingInstruments, setPlayingInstruments] = useState<Set<string>>(new Set());
     let {point} = Flatten;
     
     // Track user markers (userId -> L.Marker)
@@ -359,6 +365,18 @@ const DrawMapZones = ({ connectedUsers, currentUserId, updateUserPosition }: Dra
         }
     }, [connectedUsers, currentUserId, updateUserPosition, mapLoc]);
 
+    // Helper function to get current user's position as a Flatten.Point
+    const getUserPoint = () => {
+        const currentUser = connectedUsers.find(u => u.id === currentUserId);
+        if (!currentUser?.position) return null;
+
+        const { lat, lng } = currentUser.position;
+        const refLat = mapLoc[0];
+        const refLng = mapLoc[1];
+        const userCoords = GPStoMeters(lat, lng, refLat, refLng);
+        return point(userCoords.x, userCoords.y);
+    };
+
     // Extract current user's position as a string to avoid re-triggering on object reference changes
     const currentUserPositionKey = (() => {
         const currentUser = connectedUsers.find(u => u.id === currentUserId);
@@ -372,14 +390,8 @@ const DrawMapZones = ({ connectedUsers, currentUserId, updateUserPosition }: Dra
         if (drawnShapes.length === 0) return;
         if (!currentUserPositionKey) return;
 
-        // Parse position from key
-        const [lat, lng] = currentUserPositionKey.split(',').map(Number);
-
-        // Convert lat/lng to meters using the same coordinate system as shapes
-        const refLat = mapLoc[0];
-        const refLng = mapLoc[1];
-        const userCoords = GPStoMeters(lat, lng, refLat, refLng);
-        const userPoint = point(userCoords.x, userCoords.y);
+        const userPoint = getUserPoint();
+        if (!userPoint) return;
 
         // Check collisions
         let planarSet = new Flatten.PlanarSet();
@@ -644,25 +656,32 @@ const DrawMapZones = ({ connectedUsers, currentUserId, updateUserPosition }: Dra
         // TODO:
         // modulate sound as user nears zone within distance threshold (meters) - eg ramp sound
         // potentially calculated when user position changes by x amount
-        chosenMarker, 
+        // chosenMarker, 
         threshold} : {
-            chosenMarker: Flatten.Point,
             threshold?: number}) => {
+
         // get array of shapes that do not include marker sorted by distance to marker
-        if (!chosenMarker) {
-            console.log("no marker selected")
-            return
-        }
+        // if (!chosenMarker) {
+        //     console.log("no marker selected")
+        //     return
+        // }
         if (drawnShapes.length === 0) {
             console.log("No shapes to check collisions");
             return [];
         }
-        const collidedShapes = getCollisions(chosenMarker);
+
+        const userPoint = getUserPoint();
+        if (!userPoint) {
+            console.log("No user position available");
+            return [];
+        }
+
+        const collidedShapes = getCollisions(userPoint);
         const outsideShapes = drawnShapes.filter(x => !collidedShapes?.includes(x))
         const shapeProximity: any[] = []
         outsideShapes.forEach( (shape) => {
             // distance calculated as meters
-            const dist = chosenMarker.distanceTo(shape)[0]
+            const dist = userPoint.distanceTo(shape)[0]
             // if threshold defined return shapes within distance threshold
             if (threshold == null) {
                 shapeProximity.push({
@@ -794,9 +813,32 @@ const DrawMapZones = ({ connectedUsers, currentUserId, updateUserPosition }: Dra
     }
 
     const handleSoundboxing = () => {
+        // Toggle the debug instrument selector
+        setShowDebugInstruments(!showDebugInstruments);
+    }
+
+    const handleToggleDebugInstrument = async (instrumentId: string) => {
         const soundPlayer = SoundPlayer.getInstance();
-        console.log("playing test sound")
-        soundPlayer.playSingle("test", "C4")
+
+        if (playingInstruments.has(instrumentId)) {
+            // Stop the instrument
+            console.log(`Stopping debug instrument: ${instrumentId}`);
+            soundPlayer.stopInstrument(instrumentId);
+            setPlayingInstruments(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(instrumentId);
+                return newSet;
+            });
+        } else {
+            // Start the instrument
+            console.log(`Starting debug instrument: ${instrumentId}`);
+            await soundPlayer.startInstrument(instrumentId, "C4");
+            setPlayingInstruments(prev => new Set(prev).add(instrumentId));
+        }
+    }
+
+    const handleCloseDebugSelector = () => {
+        setShowDebugInstruments(false);
     }
 
 
@@ -871,12 +913,12 @@ const DrawMapZones = ({ connectedUsers, currentUserId, updateUserPosition }: Dra
             </label>
 
             <button
-                onClick={() => nearestShapes({chosenMarker: chosenMarkerRef.current, threshold: 30})}
+                onClick={() => setDebugMode(!debugMode)}
                 style={{
                     position: 'absolute',
-                    top: '625px',
-                    left: '10px',
-                    backgroundColor: '#3b82f6',
+                    bottom: '10px',
+                    right: '10px',
+                    backgroundColor: debugMode ? '#6b7280' : '#8b5cf6',
                     color: 'white',
                     padding: '8px 12px',
                     border: 'none',
@@ -887,27 +929,154 @@ const DrawMapZones = ({ connectedUsers, currentUserId, updateUserPosition }: Dra
                     boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
                 }}
             >
-                Get nearest (debug)
+                {debugMode ? 'hide experimental' : 'experimental'}
             </button>
-            <button
-                onClick={handleSoundboxing}
-                style={{
-                    position: 'absolute',
-                    top: '670px',
-                    left: '10px',
-                    backgroundColor: '#3b82f6',
-                    color: 'white',
-                    padding: '8px 12px',
-                    border: 'none',
-                    borderRadius: '4px',
-                    fontSize: '14px',
-                    cursor: 'pointer',
-                    zIndex: 1000,
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                }}
-            >
-                Sound test (debug)
-            </button>
+
+            {debugMode && (
+                <>
+                    <button
+                        onClick={handleSoundboxing}
+                        style={{
+                            position: 'absolute',
+                            bottom: '100px',
+                            right: '10px',
+                            backgroundColor: '#3b82f6',
+                            color: 'white',
+                            padding: '8px 12px',
+                            border: 'none',
+                            borderRadius: '4px',
+                            fontSize: '14px',
+                            cursor: 'pointer',
+                            zIndex: 1000,
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                        }}
+                    >
+                        sounds
+                    </button>
+                    <button
+                        onClick={() => nearestShapes({threshold: 100})}
+                        style={{
+                            position: 'absolute',
+                            bottom: '55px',
+                            right: '10px',
+                            backgroundColor: '#3b82f6',
+                            color: 'white',
+                            padding: '8px 12px',
+                            border: 'none',
+                            borderRadius: '4px',
+                            fontSize: '14px',
+                            cursor: 'pointer',
+                            zIndex: 1000,
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                        }}
+                    >
+                        get nearest (debug)
+                    </button>
+                    <button
+                        onClick={handleStopAudio}
+                        style={{
+                            position: 'absolute',
+                            bottom: '145px',
+                            right: '10px',
+                            backgroundColor: '#f63b3bff',
+                            color: 'white',
+                            padding: '8px 12px',
+                            border: 'none',
+                            borderRadius: '4px',
+                            fontSize: '14px',
+                            cursor: 'pointer',
+                            zIndex: 1000,
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                        }}
+                    >
+                        stop all audio
+                    </button>
+                </>
+            )}
+
+            {/* Debug Instrument Selector */}
+            {showDebugInstruments && (
+                <>
+                    {/* Overlay to close on click outside */}
+                    <div
+                        onClick={handleCloseDebugSelector}
+                        style={{
+                            position: 'fixed',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            zIndex: 1000,
+                            backgroundColor: 'transparent'
+                        }}
+                    />
+                    {/* Instrument list */}
+                    <div
+                        style={{
+                            position: 'absolute',
+                            bottom: '145px',
+                            right: '10px',
+                            backgroundColor: 'white',
+                            border: '1px solid #ccc',
+                            borderRadius: '4px',
+                            boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+                            zIndex: 1001,
+                            maxHeight: '300px',
+                            overflowY: 'auto',
+                            minWidth: '200px'
+                        }}
+                    >
+                        <div style={{ padding: '8px', borderBottom: '1px solid #e5e5e5', fontWeight: 'bold', color: '#111' }}>
+                            Select instruments
+                        </div>
+                        {INSTRUMENT_DEFINITIONS.map((instrument) => {
+                            const isPlaying = playingInstruments.has(instrument.id);
+                            return (
+                                <div
+                                    key={instrument.id}
+                                    style={{
+                                        padding: '8px 12px',
+                                        borderBottom: '1px solid #f0f0f0',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        gap: '12px'
+                                    }}
+                                >
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontWeight: '500', color: '#111' }}>{instrument.name}</div>
+                                        <div style={{ fontSize: '12px', color: '#1f34b8ff' }}>ID: {instrument.id}</div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleToggleDebugInstrument(instrument.id)}
+                                        style={{
+                                            padding: '6px 12px',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            fontSize: '12px',
+                                            fontWeight: '600',
+                                            backgroundColor: isPlaying ? '#ef4444' : '#10b981',
+                                            color: 'white',
+                                            transition: 'all 0.2s',
+                                            minWidth: '60px'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.currentTarget.style.backgroundColor = isPlaying ? '#dc2626' : '#059669';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.currentTarget.style.backgroundColor = isPlaying ? '#ef4444' : '#10b981';
+                                        }}
+                                    >
+                                        {isPlaying ? '⏹ Stop' : '▶ Play'}
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </>
+            )}
+
             <button
                 onClick={handleUpdateMarkerAudio}
                 disabled={isAudioEnabled}
