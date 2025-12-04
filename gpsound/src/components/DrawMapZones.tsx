@@ -12,6 +12,8 @@ import type { User } from '../automergeTypes';
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 
+// TODO: remove vestigial marker logic
+
 let DefaultIcon = L.icon({
     iconUrl: icon,
     shadowUrl: iconShadow,
@@ -363,6 +365,18 @@ const DrawMapZones = ({ connectedUsers, currentUserId, updateUserPosition }: Dra
         }
     }, [connectedUsers, currentUserId, updateUserPosition, mapLoc]);
 
+    // Helper function to get current user's position as a Flatten.Point
+    const getUserPoint = () => {
+        const currentUser = connectedUsers.find(u => u.id === currentUserId);
+        if (!currentUser?.position) return null;
+
+        const { lat, lng } = currentUser.position;
+        const refLat = mapLoc[0];
+        const refLng = mapLoc[1];
+        const userCoords = GPStoMeters(lat, lng, refLat, refLng);
+        return point(userCoords.x, userCoords.y);
+    };
+
     // Extract current user's position as a string to avoid re-triggering on object reference changes
     const currentUserPositionKey = (() => {
         const currentUser = connectedUsers.find(u => u.id === currentUserId);
@@ -376,14 +390,8 @@ const DrawMapZones = ({ connectedUsers, currentUserId, updateUserPosition }: Dra
         if (drawnShapes.length === 0) return;
         if (!currentUserPositionKey) return;
 
-        // Parse position from key
-        const [lat, lng] = currentUserPositionKey.split(',').map(Number);
-
-        // Convert lat/lng to meters using the same coordinate system as shapes
-        const refLat = mapLoc[0];
-        const refLng = mapLoc[1];
-        const userCoords = GPStoMeters(lat, lng, refLat, refLng);
-        const userPoint = point(userCoords.x, userCoords.y);
+        const userPoint = getUserPoint();
+        if (!userPoint) return;
 
         // Check collisions
         let planarSet = new Flatten.PlanarSet();
@@ -648,25 +656,32 @@ const DrawMapZones = ({ connectedUsers, currentUserId, updateUserPosition }: Dra
         // TODO:
         // modulate sound as user nears zone within distance threshold (meters) - eg ramp sound
         // potentially calculated when user position changes by x amount
-        chosenMarker, 
+        // chosenMarker, 
         threshold} : {
-            chosenMarker: Flatten.Point,
             threshold?: number}) => {
+
         // get array of shapes that do not include marker sorted by distance to marker
-        if (!chosenMarker) {
-            console.log("no marker selected")
-            return
-        }
+        // if (!chosenMarker) {
+        //     console.log("no marker selected")
+        //     return
+        // }
         if (drawnShapes.length === 0) {
             console.log("No shapes to check collisions");
             return [];
         }
-        const collidedShapes = getCollisions(chosenMarker);
+
+        const userPoint = getUserPoint();
+        if (!userPoint) {
+            console.log("No user position available");
+            return [];
+        }
+
+        const collidedShapes = getCollisions(userPoint);
         const outsideShapes = drawnShapes.filter(x => !collidedShapes?.includes(x))
         const shapeProximity: any[] = []
         outsideShapes.forEach( (shape) => {
             // distance calculated as meters
-            const dist = chosenMarker.distanceTo(shape)[0]
+            const dist = userPoint.distanceTo(shape)[0]
             // if threshold defined return shapes within distance threshold
             if (threshold == null) {
                 shapeProximity.push({
@@ -939,7 +954,7 @@ const DrawMapZones = ({ connectedUsers, currentUserId, updateUserPosition }: Dra
                         sounds
                     </button>
                     <button
-                        onClick={() => nearestShapes({chosenMarker: chosenMarkerRef.current, threshold: 30})}
+                        onClick={() => nearestShapes({threshold: 100})}
                         style={{
                             position: 'absolute',
                             bottom: '55px',
