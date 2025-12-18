@@ -1,6 +1,7 @@
 import * as Tone from 'tone';
 import { type SoundConfig } from '../sharedTypes';
 import { getInstrumentDefinition } from './instrumentConfig';
+import type { TransportState } from '../automergeTypes';
 
 type SynthInstrument = Tone.Synth | Tone.FMSynth | Tone.AMSynth | Tone.MonoSynth | Tone.MembraneSynth | Tone.NoiseSynth | Tone.PluckSynth | Tone.MetalSynth;
 type Instrument = SynthInstrument | Tone.Loop | Tone.Player | Tone.Noise | Tone.Pattern<any>;
@@ -10,6 +11,7 @@ export class SoundPlayer {
   private static instance: SoundPlayer;
   private activeInstruments: InstrumentGroup[] = [];
   private instrumentMap: Map<string, InstrumentGroup> = new Map();
+  private isSyncingTransport: boolean = false; // Prevent feedback loops during sync
 
   static getInstance(): SoundPlayer {
     if (!SoundPlayer.instance) {
@@ -164,6 +166,92 @@ export class SoundPlayer {
 
   private isSynthInstrument(inst: Instrument): inst is SynthInstrument {
     return 'triggerAttackRelease' in inst;
+  }
+
+  /**
+   * Synchronize local Transport with shared state from Automerge
+   * This should be called when transport state updates from other users
+   */
+  syncTransportState(transportState: TransportState): void {
+    if (this.isSyncingTransport) return; // Prevent feedback loops
+
+    this.isSyncingTransport = true;
+
+    try {
+      const transport = Tone.getTransport();
+
+      // Update BPM if changed
+      if (transport.bpm.value !== transportState.bpm) {
+        transport.bpm.value = transportState.bpm;
+      }
+
+      // Update position if changed (with small tolerance for network latency)
+      if (transport.position !== transportState.position) {
+        transport.position = transportState.position;
+      }
+
+      // Update play/pause state
+      if (transportState.isPlaying && transport.state !== 'started') {
+        transport.start();
+      } else if (!transportState.isPlaying && transport.state === 'started') {
+        transport.pause();
+      }
+    } finally {
+      this.isSyncingTransport = false;
+    }
+  }
+
+  /**
+   * Get current transport state to share with other users
+   */
+  getTransportState(masterId: string): TransportState {
+    const transport = Tone.getTransport();
+    return {
+      bpm: transport.bpm.value,
+      isPlaying: transport.state === 'started',
+      position: transport.position.toString(),
+      lastUpdated: Date.now(),
+      masterId
+    };
+  }
+
+  /**
+   * Initialize transport with default settings
+   */
+  initializeTransport(bpm: number = 120): void {
+    const transport = Tone.getTransport();
+    transport.bpm.value = bpm;
+    transport.loop = false; // Can be changed based on your needs
+  }
+
+  /**
+   * Start the transport and return new state
+   */
+  startTransport(masterId: string): TransportState {
+    if (!this.isSyncingTransport) {
+      Tone.getTransport().start();
+    }
+    return this.getTransportState(masterId);
+  }
+
+  /**
+   * Stop/pause the transport and return new state
+   */
+  stopTransport(masterId: string): TransportState {
+    if (!this.isSyncingTransport) {
+      Tone.getTransport().pause();
+    }
+    return this.getTransportState(masterId);
+  }
+
+  /**
+   * Update BPM and return new state
+   */
+  setBPM(bpm: number, masterId: string): TransportState {
+    if (!this.isSyncingTransport) {
+      Tone.getTransport().bpm.value = bpm;
+    }
+    return this.getTransportState(masterId);
   }
 }
 

@@ -7,7 +7,17 @@ window.type = true;
 
 
 function App() {
-  const { connectedUserCount, connectedUsers, userId, updateUserName, updateUserPosition, isReady } = useAutomergeDoc();
+  const {
+    connectedUserCount,
+    connectedUsers,
+    userId,
+    updateUserName,
+    updateUserPosition,
+    updateTransportState,
+    initializeTransportIfNeeded,
+    doc,
+    isReady
+  } = useAutomergeDoc();
   const [isExpanded, setIsExpanded] = useState(false);
   const [nameInput, setNameInput] = useState('');
 
@@ -208,6 +218,9 @@ function App() {
         connectedUsers={connectedUsers}
         currentUserId={userId}
         updateUserPosition={updateUserPosition}
+        updateTransportState={updateTransportState}
+        initializeTransportIfNeeded={initializeTransportIfNeeded}
+        transportState={doc?.transport}
       />
     </>
   );

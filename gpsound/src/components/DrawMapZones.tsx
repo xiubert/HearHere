@@ -6,7 +6,7 @@ import SoundKit from './SoundKit';
 import SoundPlayer from './SoundPlayer';
 import { INSTRUMENT_DEFINITIONS } from './instrumentConfig';
 import type { DrawnLayer, DrawnShape, SoundConfig } from '../sharedTypes';
-import type { User } from '../automergeTypes';
+import type { User, TransportState } from '../automergeTypes';
 
 // Fix for default markers
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -38,9 +38,19 @@ interface DrawMapZonesProps {
     connectedUsers: (User & { isActive: boolean })[];
     currentUserId: string;
     updateUserPosition: (lat: number, lng: number) => void;
+    updateTransportState: (transportState: TransportState) => void;
+    initializeTransportIfNeeded: () => boolean;
+    transportState?: TransportState;
 }
 
-const DrawMapZones = ({ connectedUsers, currentUserId, updateUserPosition }: DrawMapZonesProps) => {
+const DrawMapZones = ({
+    connectedUsers,
+    currentUserId,
+    updateUserPosition,
+    updateTransportState,
+    initializeTransportIfNeeded,
+    transportState
+}: DrawMapZonesProps) => {
     const mapRef = useRef<HTMLDivElement>(null);
     const mapInstanceRef = useRef<L.Map | null>(null);
     const [mapLoc, ] = useState<L.LatLngTuple>([42.308606, -83.747036]);
@@ -68,6 +78,14 @@ const DrawMapZones = ({ connectedUsers, currentUserId, updateUserPosition }: Dra
     const [isAudioEnabled, setIsAudioEnabled] = useState(false);
     // Track currently playing sounds to avoid unnecessary restarts
     const currentSoundsRef = useRef<string>('');
+    // Track if this user is the transport master
+    const [isTransportMaster, setIsTransportMaster] = useState(false);
+    // Track current BPM for UI
+    const [currentBPM, setCurrentBPM] = useState(120);
+    // Track if transport controls are visible
+    const [showTransportControls, setShowTransportControls] = useState(false);
+    // Track if zone management menu is visible
+    const [showZoneManagement, setShowZoneManagement] = useState(false);
     
     // handling state updates for shapes and markers
     const addUpdateShapeMeta = (k: DrawnShape, v: DrawnLayer) => {
@@ -364,6 +382,46 @@ const DrawMapZones = ({ connectedUsers, currentUserId, updateUserPosition }: Dra
             }
         }
     }, [connectedUsers, currentUserId, updateUserPosition, mapLoc]);
+
+    // Initialize transport when audio is first enabled
+    useEffect(() => {
+        if (!isAudioEnabled) return;
+
+        const soundPlayer = SoundPlayer.getInstance();
+        const becameMaster = initializeTransportIfNeeded();
+
+        if (becameMaster) {
+            // This user is the first to enable audio, so they become the transport master
+            console.log('Became transport master - initializing transport');
+            setIsTransportMaster(true);
+            soundPlayer.initializeTransport(120);
+
+            // Broadcast initial transport state
+            const initialState = soundPlayer.getTransportState(currentUserId);
+            updateTransportState(initialState);
+            setCurrentBPM(initialState.bpm);
+        } else {
+            // Sync to existing transport state
+            console.log('Syncing to existing transport');
+            setIsTransportMaster(false);
+            if (transportState) {
+                soundPlayer.syncTransportState(transportState);
+                setCurrentBPM(transportState.bpm);
+            }
+        }
+    }, [isAudioEnabled, currentUserId, initializeTransportIfNeeded, updateTransportState]);
+
+    // Sync transport state when it changes from other users
+    useEffect(() => {
+        if (!isAudioEnabled || !transportState) return;
+
+        // Don't sync if this user is the master (to avoid feedback loops)
+        if (transportState.masterId === currentUserId) return;
+
+        const soundPlayer = SoundPlayer.getInstance();
+        soundPlayer.syncTransportState(transportState);
+        setCurrentBPM(transportState.bpm);
+    }, [transportState, isAudioEnabled, currentUserId]);
 
     // Helper function to get current user's position as a Flatten.Point
     const getUserPoint = () => {
@@ -841,40 +899,47 @@ const DrawMapZones = ({ connectedUsers, currentUserId, updateUserPosition }: Dra
         setShowDebugInstruments(false);
     }
 
+    const handleCloseTransportControls = () => {
+        setShowTransportControls(false);
+    }
+
+    const handleCloseZoneManagement = () => {
+        setShowZoneManagement(false);
+    }
+
+    // Transport control handlers
+    const handleTransportStart = () => {
+        const soundPlayer = SoundPlayer.getInstance();
+        const newState = soundPlayer.startTransport(currentUserId);
+        updateTransportState(newState);
+    };
+
+    const handleTransportStop = () => {
+        const soundPlayer = SoundPlayer.getInstance();
+        const newState = soundPlayer.stopTransport(currentUserId);
+        updateTransportState(newState);
+    };
+
+    const handleBPMChange = (newBPM: number) => {
+        const soundPlayer = SoundPlayer.getInstance();
+        const newState = soundPlayer.setBPM(newBPM, currentUserId);
+        updateTransportState(newState);
+        setCurrentBPM(newBPM);
+    };
+
 
     return (
         <div style={{ height: '100vh', width: '100vw', position: 'relative' }}>
             <div ref={mapRef} style={{ height: '100%', width: '100%' }} />
 
+            {/* Zone Management Button */}
             <button
-                onClick={clearArrangement}
+                onClick={() => setShowZoneManagement(!showZoneManagement)}
                 style={{
                     position: 'absolute',
-                    top: '500px',
+                    top: '600px',
                     left: '10px',
-                    backgroundColor: '#ef4444',
-                    color: 'white',
-                    padding: '8px 12px',
-                    border: 'none',
-                    borderRadius: '4px',
-                    fontSize: '14px',
-                    cursor: 'pointer',
-                    zIndex: 1000,
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                }}
-                onMouseOver={(e) => (e.target as HTMLElement).style.backgroundColor = '#dc2626'}
-                onMouseOut={(e) => (e.target as HTMLElement).style.backgroundColor = '#ef4444'}
-            >
-                Clear Arrangement
-            </button>
-
-            <button
-                onClick={exportArrangement}
-                style={{
-                    position: 'absolute',
-                    top: '540px',
-                    left: '10px',
-                    backgroundColor: '#3b82f6',
+                    backgroundColor: '#8b5cf6',
                     color: 'white',
                     padding: '8px 12px',
                     border: 'none',
@@ -885,32 +950,111 @@ const DrawMapZones = ({ connectedUsers, currentUserId, updateUserPosition }: Dra
                     boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
                 }}
             >
-                Export Arrangement
+                {showZoneManagement ? '📍 Hide Zones' : '📍 Zone Management'}
             </button>
 
-            <label htmlFor="importArrangement" style={{
-                position: 'absolute',
-                top: '580px',
-                left: '10px',
-                backgroundColor: '#10b981',
-                color: 'white',
-                padding: '8px 12px',
-                border: 'none',
-                borderRadius: '4px',
-                fontSize: '14px',
-                cursor: 'pointer',
-                zIndex: 1000,
-                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-            }}>
-                Import Arrangement
-                <input
-                    id="importArrangement"
-                    type="file"
-                    accept="application/json"
-                    style={{ display: 'none' }}
-                    onChange={importArrangement}
-                />
-            </label>
+            {/* Zone Management Menu */}
+            {showZoneManagement && (
+                <>
+                    {/* Overlay to close on click outside */}
+                    <div
+                        onClick={handleCloseZoneManagement}
+                        style={{
+                            position: 'fixed',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            zIndex: 1000,
+                            backgroundColor: 'transparent'
+                        }}
+                    />
+                    {/* Zone management panel */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '540px',
+                        left: '10px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                        padding: '12px',
+                        borderRadius: '8px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                        zIndex: 1001,
+                        minWidth: '200px',
+                    }}>
+                        <div style={{
+                            fontSize: '12px',
+                            fontWeight: 'bold',
+                            marginBottom: '12px',
+                            color: '#374151',
+                        }}>
+                            Zone Management
+                        </div>
+
+                        {/* Export Button */}
+                        <button
+                            onClick={exportArrangement}
+                            style={{
+                                width: '100%',
+                                backgroundColor: '#3b82f6',
+                                color: 'white',
+                                padding: '8px 12px',
+                                border: 'none',
+                                borderRadius: '4px',
+                                fontSize: '14px',
+                                cursor: 'pointer',
+                                marginBottom: '8px',
+                                fontWeight: '500'
+                            }}
+                        >
+                            💾 Export Arrangement
+                        </button>
+
+                        {/* Import Button */}
+                        <label htmlFor="importArrangement" style={{
+                            display: 'block',
+                            width: '100%',
+                            backgroundColor: '#10b981',
+                            color: 'white',
+                            padding: '8px 12px',
+                            border: 'none',
+                            borderRadius: '4px',
+                            fontSize: '14px',
+                            cursor: 'pointer',
+                            marginBottom: '8px',
+                            textAlign: 'center',
+                            fontWeight: '500',
+                            boxSizing: 'border-box'
+                        }}>
+                            📂 Import Arrangement
+                            <input
+                                id="importArrangement"
+                                type="file"
+                                accept="application/json"
+                                style={{ display: 'none' }}
+                                onChange={importArrangement}
+                            />
+                        </label>
+
+                        {/* Clear Button */}
+                        <button
+                            onClick={clearArrangement}
+                            style={{
+                                width: '100%',
+                                backgroundColor: '#ef4444',
+                                color: 'white',
+                                padding: '8px 12px',
+                                border: 'none',
+                                borderRadius: '4px',
+                                fontSize: '14px',
+                                cursor: 'pointer',
+                                fontWeight: '500'
+                            }}
+                        >
+                            🗑️ Clear Arrangement
+                        </button>
+                    </div>
+                </>
+            )}
 
             <button
                 onClick={() => setDebugMode(!debugMode)}
@@ -1078,25 +1222,23 @@ const DrawMapZones = ({ connectedUsers, currentUserId, updateUserPosition }: Dra
             )}
 
             <button
-                onClick={handleUpdateMarkerAudio}
-                disabled={isAudioEnabled}
+                onClick={isAudioEnabled ? () => setShowTransportControls(!showTransportControls) : handleUpdateMarkerAudio}
                 style={{
                     position: 'absolute',
                     top: '325px',
                     left: '10px',
-                    backgroundColor: isAudioEnabled ? '#6b7280' : '#10b981',
+                    backgroundColor: isAudioEnabled ? '#3b82f6' : '#10b981',
                     color: 'white',
                     padding: '8px 12px',
                     border: 'none',
                     borderRadius: '4px',
                     fontSize: '14px',
-                    cursor: isAudioEnabled ? 'not-allowed' : 'pointer',
+                    cursor: 'pointer',
                     zIndex: 1000,
                     boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                    opacity: isAudioEnabled ? 0.6 : 1
                 }}
             >
-                {isAudioEnabled ? '🔊 Audio On' : 'Start Audio'}
+                {isAudioEnabled ? (showTransportControls ? '🎵 Hide Transport' : '🎵 Transport Controls') : 'Start Audio'}
             </button>
             <button
                 onClick={handleStopAudio}
@@ -1119,6 +1261,148 @@ const DrawMapZones = ({ connectedUsers, currentUserId, updateUserPosition }: Dra
             >
                 Stop Audio
             </button>
+
+            {/* Transport Controls */}
+            {isAudioEnabled && showTransportControls && (
+                <>
+                    {/* Overlay to close on click outside */}
+                    <div
+                        onClick={handleCloseTransportControls}
+                        style={{
+                            position: 'fixed',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            zIndex: 1000,
+                            backgroundColor: 'transparent'
+                        }}
+                    />
+                    {/* Transport controls panel */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '400px',
+                        left: '10px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                        padding: '12px',
+                        borderRadius: '8px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                        zIndex: 1001,
+                        minWidth: '200px',
+                    }}>
+                    <div style={{
+                        fontSize: '12px',
+                        fontWeight: 'bold',
+                        marginBottom: '8px',
+                        color: '#374151',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                    }}>
+                        🎵 Transport Controls
+                        {transportState?.masterId === currentUserId && (
+                            <span style={{
+                                fontSize: '10px',
+                                backgroundColor: '#3b82f6',
+                                color: 'white',
+                                padding: '2px 6px',
+                                borderRadius: '3px',
+                                fontWeight: 'normal'
+                            }}>
+                                Master
+                            </span>
+                        )}
+                    </div>
+
+                    {/* Play/Pause buttons */}
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                        <button
+                            onClick={handleTransportStart}
+                            disabled={transportState?.isPlaying}
+                            style={{
+                                flex: 1,
+                                backgroundColor: transportState?.isPlaying ? '#6b7280' : '#10b981',
+                                color: 'white',
+                                padding: '8px 12px',
+                                border: 'none',
+                                borderRadius: '4px',
+                                fontSize: '14px',
+                                cursor: transportState?.isPlaying ? 'not-allowed' : 'pointer',
+                                opacity: transportState?.isPlaying ? 0.6 : 1,
+                                fontWeight: '600'
+                            }}
+                        >
+                            ▶ Play
+                        </button>
+                        <button
+                            onClick={handleTransportStop}
+                            disabled={!transportState?.isPlaying}
+                            style={{
+                                flex: 1,
+                                backgroundColor: !transportState?.isPlaying ? '#6b7280' : '#ef4444',
+                                color: 'white',
+                                padding: '8px 12px',
+                                border: 'none',
+                                borderRadius: '4px',
+                                fontSize: '14px',
+                                cursor: !transportState?.isPlaying ? 'not-allowed' : 'pointer',
+                                opacity: !transportState?.isPlaying ? 0.6 : 1,
+                                fontWeight: '600'
+                            }}
+                        >
+                            ⏸ Pause
+                        </button>
+                    </div>
+
+                    {/* BPM Control */}
+                    <div style={{ marginBottom: '4px' }}>
+                        <label style={{
+                            fontSize: '11px',
+                            color: '#6b7280',
+                            display: 'block',
+                            marginBottom: '4px',
+                            fontWeight: '500'
+                        }}>
+                            Tempo: {currentBPM} BPM
+                        </label>
+                        <input
+                            type="range"
+                            min="60"
+                            max="200"
+                            value={currentBPM}
+                            onChange={(e) => handleBPMChange(Number(e.target.value))}
+                            style={{
+                                width: '100%',
+                                cursor: 'pointer'
+                            }}
+                        />
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            fontSize: '9px',
+                            color: '#9ca3af',
+                            marginTop: '2px'
+                        }}>
+                            <span>60</span>
+                            <span>200</span>
+                        </div>
+                    </div>
+
+                    {/* Transport info */}
+                    {transportState && (
+                        <div style={{
+                            fontSize: '10px',
+                            color: '#9ca3af',
+                            marginTop: '8px',
+                            paddingTop: '8px',
+                            borderTop: '1px solid #e5e7eb'
+                        }}>
+                            Position: {transportState.position}
+                        </div>
+                    )}
+                </div>
+                </>
+            )}
 
             <SoundKit
                 show={soundDropdown.show}

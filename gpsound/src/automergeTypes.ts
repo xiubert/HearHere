@@ -18,12 +18,24 @@ export interface User {
   };
 }
 
+// Shared Transport state for synchronized playback across all users
+export interface TransportState {
+  bpm: number; // Beats per minute (tempo)
+  isPlaying: boolean; // Whether transport is currently playing
+  position: string; // Transport position in Bars:Beats:Sixteenths format (e.g., "0:0:0")
+  lastUpdated: number; // Timestamp of last update
+  masterId: string; // ID of the user who currently controls the transport
+}
+
 // The root structure of our shared Automerge document
 export interface GPSoundDoc {
   // Map of user IDs to User objects
   // We use a map so each user can update their own entry independently
   users?: { [userId: string]: User };
-  
+
+  // Shared transport state for synchronized playback
+  transport?: TransportState;
+
   // Future fields will go here:
   // - Map zones/shapes
   // - Sound configurations

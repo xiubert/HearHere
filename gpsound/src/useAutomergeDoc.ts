@@ -177,7 +177,7 @@ export const useAutomergeDoc = () => {
   // Function to update the current user's position
   const updateUserPosition = (lat: number, lng: number) => {
     if (!changeDoc) return;
-    
+
     changeDoc((d) => {
       if (!d.users) {
         d.users = {};
@@ -188,6 +188,39 @@ export const useAutomergeDoc = () => {
     });
   };
 
+  // Function to update transport state (called by transport master)
+  const updateTransportState = (transportState: any) => {
+    if (!changeDoc) return;
+
+    changeDoc((d) => {
+      d.transport = transportState;
+    });
+  };
+
+  // Function to initialize transport if it doesn't exist
+  // Returns true if this user became the master, false otherwise
+  const initializeTransportIfNeeded = (): boolean => {
+    if (!changeDoc || !doc) return false;
+
+    // If transport already exists, don't initialize
+    if (doc.transport) return false;
+
+    // Initialize transport with current user as master
+    changeDoc((d) => {
+      if (!d.transport) {
+        d.transport = {
+          bpm: 120,
+          isPlaying: false,
+          position: "0:0:0",
+          lastUpdated: Date.now(),
+          masterId: userId
+        };
+      }
+    });
+
+    return true;
+  };
+
   return {
     doc,
     changeDoc,
@@ -196,6 +229,8 @@ export const useAutomergeDoc = () => {
     connectedUserCount: connectedUsers.length,
     updateUserName,
     updateUserPosition,
+    updateTransportState,
+    initializeTransportIfNeeded,
     isReady: !!doc,
   };
 };
