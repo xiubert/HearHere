@@ -7,7 +7,20 @@ window.type = true;
 
 
 function App() {
-  const { connectedUserCount, connectedUsers, userId, updateUserName, updateUserPosition, isReady } = useAutomergeDoc();
+  const {
+    connectedUserCount,
+    connectedUsers,
+    userId,
+    updateUserName,
+    updateUserPosition,
+    syncedShapes,
+    addShape,
+    updateShapeSound,
+    updateShapeCoordinates,
+    deleteShape,
+    clearAllShapes,
+    isReady
+  } = useAutomergeDoc();
   const [isExpanded, setIsExpanded] = useState(false);
   const [nameInput, setNameInput] = useState('');
 
@@ -208,6 +221,12 @@ function App() {
         connectedUsers={connectedUsers}
         currentUserId={userId}
         updateUserPosition={updateUserPosition}
+        syncedShapes={syncedShapes}
+        addShape={addShape}
+        updateShapeSound={updateShapeSound}
+        updateShapeCoordinates={updateShapeCoordinates}
+        deleteShape={deleteShape}
+        clearAllShapes={clearAllShapes}
       />
     </>
   );
