@@ -97,6 +97,10 @@ const DrawMapZones = ({
     // Track shapes created locally that are pending Automerge confirmation
     const pendingLocalShapesRef = useRef<Set<string>>(new Set());
     
+    // Track last location update time
+    const lastCalculationRef = useRef<number>(0);
+    const THROTTLE_MS = 500; // Calculate at most once per 0.5s
+
     // Refs for Automerge functions to avoid stale closures in event handlers
     const addShapeRef = useRef(addShape);
     const deleteShapeRef = useRef(deleteShape);
@@ -572,7 +576,15 @@ const DrawMapZones = ({
     })();
 
     // Automatically update audio based on user position
+    // TODO: incorporate nearestShapes to ramp volume as approaching nearest zone
     useEffect(() => {
+        // throttle location update calculation
+        const now = Date.now();
+        if (now - lastCalculationRef.current < THROTTLE_MS) {
+            console.log("throttled...")
+            return; // Skip this update
+        }
+        lastCalculationRef.current = now;
         if (!isAudioEnabled) return;
         if (drawnShapes.length === 0) return;
         if (!currentUserPositionKey) return;
