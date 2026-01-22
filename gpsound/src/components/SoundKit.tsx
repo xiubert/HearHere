@@ -1,4 +1,4 @@
-import SoundPlayer from './SoundPlayer';
+// import SoundPlayer from './SoundPlayer';
 import { SOUND_DEFINITIONS } from './instrumentConfig';
 
 interface SoundKitProps {
@@ -11,8 +11,8 @@ interface SoundKitProps {
 }
 
 const SoundKit = ({ show, shapeId, position, onSoundSelect, onClose, selectedsoundId }: SoundKitProps) => {
-  const handleSoundSelect = (soundId: string, note: string) => {
-    const soundPlayer = SoundPlayer.getInstance();
+  const handleSoundSelect = (soundId: string) => {
+    // const soundPlayer = SoundPlayer.getInstance();
     // resort instead to sound bank for trying instruments
     // soundPlayer.playSingle(soundId, note);
     onSoundSelect(soundId);
@@ -55,7 +55,7 @@ const SoundKit = ({ show, shapeId, position, onSoundSelect, onClose, selectedsou
         {SOUND_DEFINITIONS.map((sound) => (
           <button
             key={sound.id}
-            onClick={() => handleSoundSelect(sound.id, sound.defaultNote)}
+            onClick={() => handleSoundSelect(sound.id)}
             style={{
               width: '100%',
               padding: '10px 12px',
