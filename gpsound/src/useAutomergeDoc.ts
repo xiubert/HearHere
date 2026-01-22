@@ -195,7 +195,7 @@ export const useAutomergeDoc = () => {
   })();
 
   // Function to add a new shape to the document
-  const addShape = (type: string, coordinates: any, soundType: string | null = null): string => {
+  const addShape = (type: string, coordinates: any, soundId: string | null = null): string => {
     const shapeId = `shape-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     
     if (!changeDoc) return shapeId;
@@ -208,7 +208,7 @@ export const useAutomergeDoc = () => {
         id: shapeId,
         type,
         coordinates,
-        soundType,
+        soundId,
         createdBy: userId,
         createdAt: Date.now(),
       };
@@ -218,12 +218,12 @@ export const useAutomergeDoc = () => {
   };
 
   // Function to update a shape's sound type
-  const updateShapeSound = (shapeId: string, soundType: string | null) => {
+  const updateShapeSound = (shapeId: string, soundId: string | null) => {
     if (!changeDoc) return;
     
     changeDoc((d) => {
       if (d.shapes && d.shapes[shapeId]) {
-        d.shapes[shapeId].soundType = soundType;
+        d.shapes[shapeId].soundId = soundId;
       }
     });
   };
