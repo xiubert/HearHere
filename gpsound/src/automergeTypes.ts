@@ -29,12 +29,11 @@ export interface SyncedShape {
 }
 
 // Shared Transport state for synchronized playback across all users
+// Uses timestamp-based sync: all clients calculate position from startTime
 export interface TransportState {
+  startTime: number | null; // Timestamp (ms) when transport started (null when stopped)
   bpm: number; // Beats per minute (tempo)
   isPlaying: boolean; // Whether transport is currently playing
-  position: string; // Transport position in Bars:Beats:Sixteenths format (e.g., "0:0:0")
-  lastUpdated: number; // Timestamp of last update
-  masterId: string; // ID of the user who currently controls the transport
 }
 
 // The root structure of our shared Automerge document

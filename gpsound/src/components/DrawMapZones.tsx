@@ -6,7 +6,7 @@ import SoundKit from './SoundKit';
 import SoundPlayer from './SoundPlayer';
 import { SOUND_DEFINITIONS } from './instrumentConfig';
 import type { DrawnLayer, DrawnShape, SoundConfig } from '../sharedTypes';
-import type { User, SyncedShape } from '../automergeTypes';
+import type { User, SyncedShape, TransportState } from '../automergeTypes';
 import { TimingSync } from './TimingSync';
 import type { LocationMode } from '../useGeolocation';
 
@@ -47,11 +47,13 @@ interface DrawMapZonesProps {
     deleteShape: (shapeId: string) => void;
     clearAllShapes: () => void;
     locationMode: LocationMode;
+    transportState?: TransportState;
+    updateTransportState: (state: TransportState) => void;
 }
 
-const DrawMapZones = ({ 
-    connectedUsers, 
-    currentUserId, 
+const DrawMapZones = ({
+    connectedUsers,
+    currentUserId,
     updateUserPosition,
     syncedShapes,
     addShape,
@@ -59,7 +61,9 @@ const DrawMapZones = ({
     updateShapeCoordinates,
     deleteShape,
     clearAllShapes,
-    locationMode
+    locationMode,
+    transportState,
+    updateTransportState
 }: DrawMapZonesProps) => {
     const mapRef = useRef<HTMLDivElement>(null);
     const mapInstanceRef = useRef<L.Map | null>(null);
@@ -123,11 +127,8 @@ const DrawMapZones = ({
             try {
                 const timingSync = TimingSync.getInstance();
 
-                // Use currentUserId as the session ID
-                const sessionId = currentUserId;
-
-                console.log('Initializing TimingSync...');
-                await timingSync.initialize(sessionId);
+                console.log('Initializing TimingSync with timestamp-based sync...');
+                await timingSync.initialize(120);
                 setTimingSyncReady(true);
                 console.log('TimingSync ready!');
 
@@ -135,11 +136,11 @@ const DrawMapZones = ({
                 const soundPlayer = SoundPlayer.getInstance();
                 await soundPlayer.initializeTransport(120);
 
-                // Sync UI BPM with the current timing object state
-                const state = timingSync.getState();
-                if (state && state.bpm > 0) {
-                    setCurrentBPM(state.bpm);
-                    console.log('Synced to existing BPM:', state.bpm);
+                // Sync from Automerge if transport state exists
+                if (transportState) {
+                    timingSync.syncFromRemote(transportState);
+                    setCurrentBPM(transportState.bpm);
+                    console.log('Synced to existing transport state:', transportState);
                 }
 
                 // Register callback to update UI when BPM changes from other clients
@@ -150,12 +151,21 @@ const DrawMapZones = ({
 
             } catch (error) {
                 console.error('Failed to initialize TimingSync:', error);
-                setTimingSyncError('Failed to connect to timing server');
+                setTimingSyncError('Failed to initialize timing sync');
             }
         };
 
         initializeTiming();
-    }, [isAudioEnabled, timingSyncReady, currentUserId]);
+    }, [isAudioEnabled, timingSyncReady, transportState]);
+
+    // Sync from remote Automerge transport state changes
+    useEffect(() => {
+        if (!isAudioEnabled || !timingSyncReady || !transportState) return;
+
+        const timingSync = TimingSync.getInstance();
+        timingSync.syncFromRemote(transportState);
+        setCurrentBPM(transportState.bpm);
+    }, [transportState, isAudioEnabled, timingSyncReady]);
 
 
     // Track current BPM for UI
@@ -1092,20 +1102,26 @@ const DrawMapZones = ({
     const handleTransportStart = () => {
         if (!timingSyncReady) return;
         const timingSync = TimingSync.getInstance();
-        timingSync.play();
+        const newState = timingSync.play();
+        updateTransportState(newState);
+        console.log('Transport started, syncing to Automerge');
     };
 
     const handleTransportStop = () => {
         if (!timingSyncReady) return;
         const timingSync = TimingSync.getInstance();
-        timingSync.pause();
+        const newState = timingSync.pause();
+        updateTransportState(newState);
+        console.log('Transport stopped, syncing to Automerge');
     };
 
     const handleBPMChange = (newBPM: number) => {
         if (!timingSyncReady) return;
         const timingSync = TimingSync.getInstance();
-        timingSync.setBPM(newBPM);
+        const newState = timingSync.setBPM(newBPM);
+        updateTransportState(newState);
         setCurrentBPM(newBPM);
+        console.log('BPM changed, syncing to Automerge');
     };
 
 
@@ -1419,7 +1435,7 @@ const DrawMapZones = ({
                     boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
                 }}
             >
-                {isAudioEnabled ? (showTransportControls ? '🎵 Hide Transport' : '🎵 Transport Controls') : 'Start Audio'}
+                {isAudioEnabled ? (showTransportControls ? '🎵 Hide Transport' : '🎵 Transport Controls') : 'Enable Audio'}
             </button>
             <button
                 onClick={handleStopAudio}
@@ -1440,7 +1456,7 @@ const DrawMapZones = ({
                     opacity: isAudioEnabled ? 1 : 0.6
                 }}
             >
-                Stop Audio
+                Disable Audio
             </button>
 
             {/* Transport controls panel */}
@@ -1533,19 +1549,19 @@ const DrawMapZones = ({
                         {/* Play/Pause Button */}
                         <button
                             onClick={handleTransportStart}
-                            disabled={!timingSyncReady}
+                            disabled={!timingSyncReady || transportState?.isPlaying}
                             style={{
                                 width: '100%',
-                                backgroundColor: timingSyncReady ? '#10b981' : '#6b7280',
+                                backgroundColor: (!timingSyncReady || transportState?.isPlaying) ? '#6b7280' : '#10b981',
                                 color: 'white',
                                 padding: '8px 12px',
                                 border: 'none',
                                 borderRadius: '4px',
                                 fontSize: '14px',
-                                cursor: timingSyncReady ? 'pointer' : 'not-allowed',
+                                cursor: (!timingSyncReady || transportState?.isPlaying) ? 'not-allowed' : 'pointer',
                                 marginBottom: '8px',
                                 fontWeight: '500',
-                                opacity: timingSyncReady ? 1 : 0.6
+                                opacity: (!timingSyncReady || transportState?.isPlaying) ? 0.6 : 1
                             }}
                         >
                             ▶ Play
@@ -1554,19 +1570,19 @@ const DrawMapZones = ({
                         {/* Stop Button */}
                         <button
                             onClick={handleTransportStop}
-                            disabled={!timingSyncReady}
+                            disabled={!timingSyncReady || !transportState?.isPlaying}
                             style={{
                                 width: '100%',
-                                backgroundColor: timingSyncReady ? '#ef4444' : '#6b7280',
+                                backgroundColor: (!timingSyncReady || !transportState?.isPlaying) ? '#6b7280' : '#ef4444',
                                 color: 'white',
                                 padding: '8px 12px',
                                 border: 'none',
                                 borderRadius: '4px',
                                 fontSize: '14px',
-                                cursor: timingSyncReady ? 'pointer' : 'not-allowed',
+                                cursor: (!timingSyncReady || !transportState?.isPlaying) ? 'not-allowed' : 'pointer',
                                 marginBottom: '8px',
                                 fontWeight: '500',
-                                opacity: timingSyncReady ? 1 : 0.6
+                                opacity: (!timingSyncReady || !transportState?.isPlaying) ? 0.6 : 1
                             }}
                         >
                             ⏸ Pause

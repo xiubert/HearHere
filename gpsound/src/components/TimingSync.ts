@@ -1,13 +1,21 @@
 import * as Tone from 'tone';
-import { TimingObject } from 'timing-object';
-import { TimingProvider } from 'timing-provider';
+
+export interface TransportSyncState {
+    startTime: number | null; // Timestamp in ms when transport started
+    bpm: number;
+    isPlaying: boolean;
+}
 
 export class TimingSync {
     private static instance: TimingSync | null = null;
-    private timingObject: InstanceType<typeof TimingObject> | null = null;
     private updateInterval: number | null = null;
     private isInitialized: boolean = false;
     private onBpmChangeCallback: ((bpm: number) => void) | null = null;
+    private currentState: TransportSyncState = {
+        startTime: null,
+        bpm: 120,
+        isPlaying: false
+    };
 
     private constructor() {}
 
@@ -18,225 +26,173 @@ export class TimingSync {
         return TimingSync.instance;
     }
 
-    async initialize(sessionId: string): Promise<void> {
+    async initialize(bpm: number = 120): Promise<void> {
         if (this.isInitialized) {
             console.log('TimingSync already initialized');
             return;
         }
 
-        return new Promise((resolve, reject) => {
-            try {
-                // Create timing provider with local server URL
-                // Note: timing-provider-server shares timing state across all connected clients
-                // If you need per-session sync, run multiple servers on different ports
-                // and use: `ws://localhost:${2276 + hashCode(sessionId) % 100}`
-                const timingProvider = new TimingProvider('ws://localhost:2276');
-                this.timingObject = new TimingObject(timingProvider);
+        console.log('Initializing TimingSync with timestamp-based sync');
 
-                console.log(`Connecting to timing server for session: ${sessionId}`);
+        this.currentState.bpm = bpm;
+        this.isInitialized = true;
 
-                // Wait for connection
-                const handleReadyStateChange = () => {
-                    if (this.timingObject!.readyState === 'open') {
-                        this.timingObject!.removeEventListener('readystatechange', handleReadyStateChange);
-                        console.log('TimingObject connected');
-                        this.isInitialized = true;
-                        this.startSyncLoop();
-                        resolve();
-                    }
-                };
+        // Start Tone.js audio context
+        const transport = Tone.getTransport();
+        transport.bpm.value = bpm;
 
-                this.timingObject.addEventListener('readystatechange', handleReadyStateChange);
+        // Start sync loop
+        this.startSyncLoop();
 
-                // Listen for remote changes
-                this.timingObject.addEventListener('change', () => {
-                    this.syncFromTimingObject();
-                });
-
-                // Timeout after 10 seconds
-                setTimeout(() => {
-                    if (!this.isInitialized) {
-                        reject(new Error('TimingObject connection timeout'));
-                    }
-                }, 10000);
-            } catch (error) {
-                reject(error);
-            }
-        });
+        console.log('TimingSync ready!');
     }
 
-    private translateVector(vector: { position: number; velocity: number; timestamp: number; acceleration: number }) {
-        if (vector.acceleration !== 0) {
-            throw new Error('Acceleration not supported');
-        }
-
-        // Calculate current position based on elapsed time
-        const now = performance.now() / 1000;
-        const elapsed = now - vector.timestamp;
-        const currentPosition = vector.position + (vector.velocity * elapsed);
-
-        return {
-            position: currentPosition,
-            velocity: vector.velocity
-        };
-    }
-
-    private syncFromTimingObject() {
-        if (!this.timingObject) return;
+    /**
+     * Update from remote Automerge state
+     * Call this when the shared transport state changes
+     */
+    syncFromRemote(state: TransportSyncState) {
+        if (!this.isInitialized) return;
 
         const transport = Tone.getTransport();
-        const vector = this.timingObject.query();
-        const { position, velocity } = this.translateVector(vector);
+        const prevBpm = this.currentState.bpm;
 
-        // Convert velocity (BPM/60) back to BPM
-        const bpm = velocity * 60;
-
-        // console.log('[TimingSync] Syncing to Transport:', {
-        //     position,
-        //     bpm,
-        //     velocity,
-        //     transportState: transport.state,
-        //     transportBPM: transport.bpm.value
-        // });
+        // Update local state
+        this.currentState = { ...state };
 
         // Notify UI if BPM changed
-        if (bpm > 0 && Math.abs(transport.bpm.value - bpm) > 0.1) {
+        if (Math.abs(prevBpm - state.bpm) > 0.1) {
             if (this.onBpmChangeCallback) {
-                this.onBpmChangeCallback(Math.round(bpm));
+                this.onBpmChangeCallback(Math.round(state.bpm));
             }
         }
 
-        // Update Tone.js Transport
-        if (velocity > 0) {
-            // Calculate playback position in seconds
-            transport.seconds = position / velocity;
-            transport.bpm.value = bpm;
+        // Update BPM
+        transport.bpm.value = state.bpm;
 
-            // Start if stopped or paused
+        // Update play/pause state and position
+        if (state.isPlaying && state.startTime) {
+            // Calculate current position based on elapsed time
+            const elapsed = Date.now() - state.startTime;
+            const positionInSeconds = (elapsed / 1000) * (state.bpm / 60);
+
+            transport.seconds = positionInSeconds;
+
             if (transport.state !== 'started') {
                 console.log('[TimingSync] Starting Transport');
                 transport.start();
             }
         } else {
-            // Stop if started or paused
             if (transport.state !== 'stopped') {
                 console.log('[TimingSync] Stopping Transport');
                 transport.stop();
             }
         }
+    }
 
-        // console.log('[TimingSync] Transport after sync:', {
-        //     state: transport.state,
-        //     bpm: transport.bpm.value,
-        //     position: transport.position
-        // });
+    private syncToTransport() {
+        if (!this.isInitialized || !this.currentState.isPlaying || !this.currentState.startTime) {
+            return;
+        }
+
+        const transport = Tone.getTransport();
+
+        // Calculate where we should be based on startTime
+        const elapsed = Date.now() - this.currentState.startTime;
+        const expectedPosition = (elapsed / 1000) * (this.currentState.bpm / 60);
+
+        // Get current transport position in seconds
+        const currentPosition = transport.seconds;
+
+        // If drift is more than 50ms, resync
+        const drift = Math.abs(currentPosition - expectedPosition);
+        if (drift > 0.05) {
+            console.log(`[TimingSync] Correcting drift: ${(drift * 1000).toFixed(1)}ms`);
+            transport.seconds = expectedPosition;
+        }
     }
 
     private startSyncLoop() {
-        // Periodically sync to correct drift with small random jitter to prevent thundering herd
         const sync = () => {
-            this.syncFromTimingObject();
-            // For even tighter sync (more CPU usage):
-            // const baseInterval = 250;  // Sync every ~250ms
-            // const jitterRange = 50;    // ±50ms jitter
+            this.syncToTransport();
 
-            // // For balanced performance (current setting):
-            // const baseInterval = 500;  // Sync every ~500ms
-            // const jitterRange = 100;   // ±100ms jitter
-
-            // // For lower CPU usage (more drift):
-            // const baseInterval = 1000; // Sync every ~1 second
-            // const jitterRange = 200;   // ±200ms jitter
-            // Sync every 500ms with ±100ms jitter (more frequent = less drift)
-            const baseInterval = 250;
-            const jitterRange = 50;
+            // Sync every 500ms with small jitter
+            const baseInterval = 500;
+            const jitterRange = 100;
             const jitter = baseInterval + (Math.random() * jitterRange * 2 - jitterRange);
             this.updateInterval = window.setTimeout(sync, jitter);
         };
         sync();
     }
 
-    // Call this when the local user changes BPM
-    setBPM(bpm: number) {
-        if (!this.timingObject || !this.isInitialized) {
-            console.warn('TimingObject not initialized');
-            return;
+    /**
+     * Call this when local user changes BPM
+     * Returns the new state to share via Automerge
+     */
+    setBPM(bpm: number): TransportSyncState {
+        if (!this.isInitialized) {
+            console.warn('TimingSync not initialized');
+            return this.currentState;
         }
 
-        const velocity = bpm / 60;
-        const currentVector = this.timingObject.query();
-
-        this.timingObject.update({
-            velocity: velocity,
-            position: currentVector.position
-        });
-
-        // Immediately sync local Transport after update
-        this.syncFromTimingObject();
-
-        console.log('Updated TimingObject BPM:', bpm);
-    }
-
-    // Call this when the local user plays
-    play() {
-        if (!this.timingObject || !this.isInitialized) {
-            console.warn('TimingObject not initialized');
-            return;
-        }
+        this.currentState.bpm = bpm;
 
         const transport = Tone.getTransport();
-        const currentVector = this.timingObject.query();
+        transport.bpm.value = bpm;
 
-        // If playback is already happening (velocity > 0), just sync to it
-        // This prevents overwriting another user's BPM
-        if (currentVector.velocity > 0) {
-            console.log('Playback already active, syncing to existing BPM');
-            this.syncFromTimingObject();
-            return;
-        }
-
-        // Otherwise, start playback with current local BPM
-        const currentBPM = transport.bpm.value;
-        this.timingObject.update({
-            velocity: currentBPM / 60,
-            position: currentVector.position || 0
-        });
-
-        // Immediately sync local Transport after update
-        this.syncFromTimingObject();
-
-        console.log('Started playback with BPM:', currentBPM);
+        console.log('Updated BPM:', bpm);
+        return { ...this.currentState };
     }
 
-    // Call this when the local user pauses
-    pause() {
-        if (!this.timingObject || !this.isInitialized) {
-            console.warn('TimingObject not initialized');
-            return;
+    /**
+     * Call this when local user plays
+     * Returns the new state to share via Automerge
+     */
+    play(): TransportSyncState {
+        if (!this.isInitialized) {
+            console.warn('TimingSync not initialized');
+            return this.currentState;
         }
 
-        const currentVector = this.timingObject.query();
+        // If already playing, don't restart - just return current state
+        if (this.currentState.isPlaying) {
+            console.log('Already playing');
+            return { ...this.currentState };
+        }
 
-        this.timingObject.update({
-            velocity: 0,
-            position: currentVector.position
-        });
+        // Start playback with current timestamp
+        this.currentState.startTime = Date.now();
+        this.currentState.isPlaying = true;
 
-        // Immediately sync local Transport after update
-        this.syncFromTimingObject();
+        const transport = Tone.getTransport();
+        transport.start();
+
+        console.log('Started playback at:', this.currentState.startTime);
+        return { ...this.currentState };
+    }
+
+    /**
+     * Call this when local user pauses
+     * Returns the new state to share via Automerge
+     */
+    pause(): TransportSyncState {
+        if (!this.isInitialized) {
+            console.warn('TimingSync not initialized');
+            return this.currentState;
+        }
+
+        this.currentState.isPlaying = false;
+        this.currentState.startTime = null;
+
+        const transport = Tone.getTransport();
+        transport.stop();
 
         console.log('Paused playback');
+        return { ...this.currentState };
     }
 
-    getState() {
-        if (!this.timingObject) return null;
-
-        const vector = this.timingObject.query();
-        return {
-            isPlaying: vector.velocity !== 0,
-            bpm: vector.velocity * 60,
-            position: vector.position
-        };
+    getState(): TransportSyncState {
+        return { ...this.currentState };
     }
 
     // Register a callback to be notified when BPM changes from remote
@@ -249,7 +205,6 @@ export class TimingSync {
             clearTimeout(this.updateInterval);
             this.updateInterval = null;
         }
-        this.timingObject = null;
         this.isInitialized = false;
         this.onBpmChangeCallback = null;
     }

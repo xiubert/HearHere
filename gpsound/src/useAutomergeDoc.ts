@@ -189,7 +189,7 @@ export const useAutomergeDoc = () => {
   }, [changeDoc, userId]);
 
   // Get all synced shapes
-  const syncedShapes = useMemo(() => {
+  const syncedShapes: SyncedShape[] = useMemo(() => {
     if (!doc?.shapes) return [];
     return Object.values(doc.shapes);
   }, [doc?.shapes]);
@@ -269,28 +269,19 @@ export const useAutomergeDoc = () => {
   }, [changeDoc]);
 
   // Function to initialize transport if it doesn't exist
-  // Returns true if this user became the master, false otherwise
-  const initializeTransportIfNeeded = useCallback((): boolean => {
-    if (!changeDoc || !doc) return false;
+  const initializeTransportIfNeeded = useCallback(() => {
+    if (!changeDoc) return;
 
-    // If transport already exists, don't initialize
-    if (doc.transport) return false;
-
-    // Initialize transport with current user as master
     changeDoc((d) => {
       if (!d.transport) {
         d.transport = {
+          startTime: null,
           bpm: 120,
-          isPlaying: false,
-          position: "0:0:0",
-          lastUpdated: Date.now(),
-          masterId: userId
+          isPlaying: false
         };
       }
     });
-
-    return true;
-  }, [changeDoc, doc, userId]);
+  }, [changeDoc]);
 
   return {
     doc,
