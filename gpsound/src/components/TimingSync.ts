@@ -74,7 +74,7 @@ export class TimingSync {
         if (state.isPlaying && state.startTime) {
             // Calculate current position based on elapsed time
             const elapsed = Date.now() - state.startTime;
-            const positionInSeconds = (elapsed / 1000) * (state.bpm / 60);
+            const positionInSeconds = elapsed / 1000;
 
             transport.seconds = positionInSeconds;
 
@@ -99,7 +99,7 @@ export class TimingSync {
 
         // Calculate where we should be based on startTime
         const elapsed = Date.now() - this.currentState.startTime;
-        const expectedPosition = (elapsed / 1000) * (this.currentState.bpm / 60);
+        const expectedPosition = elapsed / 1000;
 
         // Get current transport position in seconds
         const currentPosition = transport.seconds;

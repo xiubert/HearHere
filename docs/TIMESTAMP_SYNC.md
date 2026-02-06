@@ -29,10 +29,10 @@ Each client calculates their position independently:
 const elapsed = Date.now() - startTime;
 
 // Convert to beats (position in the Transport timeline)
-const positionInBeats = (elapsed / 1000) * (bpm / 60);
+const positionInSeconds = (elapsed / 1000);
 
 // Sync Tone.js Transport to this position
-Transport.seconds = positionInBeats;
+Transport.seconds = positionInSeconds;
 ```
 
 ### Sync Flow
@@ -167,3 +167,5 @@ Only sounds scheduled on the Transport timeline respond to these controls:
 - `Tone.Sequence` - Step sequencers
 
 Sounds triggered with `triggerAttackRelease()` play immediately and are NOT affected by Transport play/pause/BPM.
+
+## TODO: check with transport re beats for time
