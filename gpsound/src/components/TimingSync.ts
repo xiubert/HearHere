@@ -117,8 +117,8 @@ export class TimingSync {
             this.syncToTransport();
 
             // Sync every 500ms with small jitter
-            const baseInterval = 500;
-            const jitterRange = 100;
+            const baseInterval = 250;
+            const jitterRange = 50;
             const jitter = baseInterval + (Math.random() * jitterRange * 2 - jitterRange);
             this.updateInterval = window.setTimeout(sync, jitter);
         };
